@@ -1,0 +1,366 @@
+﻿@page "/"
+@using System.Globalization
+@using AXSeniorsRetoFrontEnd.Models
+@using AXSeniorsRetoFrontEnd.Models.Request
+@using AXSeniorsRetoFrontEnd.Models.Request.Orders
+@using Microsoft.AspNetCore.Components.Forms
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+
+<PageTitle>Pedido de Venta</PageTitle>
+
+<div class="container my-4">
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h4 class="mb-0">Pedido de Venta</h4>
+        </div>
+        <div class="card-body">
+            <EditForm Model="pedido" OnValidSubmit="GuardarPedido">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Número de Pedido</label>
+                        <InputText class="form-control" @bind-Value="pedido.NumeroPedido" readonly style="background-color:white" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Cliente</label>
+                        <select class="form-select" @onchange="ActualizarNombreCliente">
+                            <option value="" selected>-- Seleccione --</option>
+                            @foreach (var cliente in clientes)
+                            {
+                                <option value="@cliente.Id"> @(@cliente.Id.Substring(0,8)) @cliente.FirstName @cliente.LastName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Nombre del Cliente</label>
+                        <InputText class="form-control" @bind-Value="pedido.NombreCliente" style="background-color:white" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Fecha del Pedido</label>
+                        <InputDate class="form-control" @bind-Value="pedido.FechaPedido" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Fecha de Entrega</label>
+                        <InputDate class="form-control" @bind-Value="pedido.FechaEntrega" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Estado</label>
+                        <InputText class="form-control" @bind-Value="pedido.Estado" readonly style="background-color:white" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Observaciones</label>
+                        <InputText class="form-control" @bind-Value="pedido.Observaciones" style="background-color:white" />
+                    </div>
+                </div>
+
+                <hr />
+
+                <h5>Líneas del Pedido</h5>
+
+                <div class="table-responsive">
+                    <table class="table table-bordered align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Código de Artículo</th>
+                                <th>Nombre del Artículo</th>
+                                <th>Cantidad</th>
+                                <th>Precio Unitario</th>
+                                <th>Descuento</th>
+                                <th>Importe</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var linea in pedido.Lineas)
+                            {
+                                <tr>
+                                    <td>@linea.Codigo</td>
+                                    <td>@linea.Nombre</td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary me-1" @onclick="() => CambiarCantidad(linea, -1)">-</button>
+                                        @linea.Cantidad
+                                        <button type="button" class="btn btn-sm btn-outline-secondary ms-1" @onclick="() => CambiarCantidad(linea, 1)">+</button>
+                                    </td>
+                                    <td>@linea.PrecioUnitario.ToString("N2")</td>
+                                    <td>@(linea.Descuento * 100) %</td>
+                                    <td>@((linea.Cantidad * linea.PrecioUnitario * (1 - linea.Descuento)).ToString("N2"))</td>
+                                    <td>
+                                        <button class="btn btn-danger btn-sm" @onclick="() => EliminarLinea(linea)">✖</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-1">
+                        <label class="form-label">Cantidad</label>
+                        <InputNumber class="form-control" @bind-Value="nuevaLinea.Cantidad" placeholder="Cantidad" />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Agregar producto</label>
+                        <InputSelect class="form-select" @bind-Value="nuevoProducto">
+                            <option value="" selected>-- Seleccione producto --</option>
+                            @foreach (var producto in productosDisponibles)
+                            {
+                                <option value="@producto.Id">@producto.Name</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button type="button" class="btn btn-outline-primary" @onclick="AgregarLinea">+ Añadir Línea</button>
+                    </div>
+                </div>
+
+                <p>Total sin descuentos: <strong>@pedido.Lineas.Sum(l => l.Cantidad * l.PrecioUnitario).ToString("N2")</strong></p>
+                <p>Total con descuentos: <strong>@pedido.TotalConDescuento.ToString("N2")</strong></p>
+                <p>Total líneas: <strong>@pedido.Lineas.Count</strong></p>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" type="submit">Guardar Pedido</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div class="toast align-items-center text-white bg-danger border-0" role="alert" @ref="toastRef">
+            <div class="d-flex">
+                <div class="toast-body">@toastMensaje</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" @onclick="CerrarToast"></button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+@code {
+    OrderRequest pedido = new();
+    DetalleDeOrdenRequest nuevaLinea = new();
+    private string nuevoProducto;
+
+    private List<ClientDto> clientes = new();
+    private List<ProductDto> productosDisponibles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ObtenerNumeroPedido();
+        await CargarClientes();
+        await CargarProductos();
+    }
+
+    private async Task CargarClientes()
+    {
+        try
+        {
+            var result = await Http.GetFromJsonAsync<List<ClientDto>>("https://apiaxseniors-augphncxezfpa4a8.canadacentral-01.azurewebsites.net/v1/account/get-all-users");
+            
+            if (result != null)
+                clientes = result;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar clientes: {ex.Message}");
+        }
+    }
+
+    private async Task CargarProductos()
+    {
+        try
+        {
+            var result = await Http.GetFromJsonAsync<List<ProductDto>>("https://apiaxseniors-augphncxezfpa4a8.canadacentral-01.azurewebsites.net/v1/product/get-all-products");
+            
+            if (result != null)
+                productosDisponibles = result;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar productos: {ex.Message}");
+        }
+    }
+
+    private async Task ObtenerNumeroPedido()
+    {
+        try
+        {
+            int cantidad = await Http.GetFromJsonAsync<int>("https://apiaxseniors-augphncxezfpa4a8.canadacentral-01.azurewebsites.net/v1/order/length");
+            pedido.NumeroPedido = $"PED-{(cantidad + 1).ToString("D3")}";
+        }
+        catch (Exception ex)
+        {
+            pedido.NumeroPedido = "PED-001";
+        }
+    }
+
+    private void CambiarCantidad(DetalleDeOrdenRequest linea, int delta)
+    {
+        linea.Cantidad = Math.Max(1, linea.Cantidad + delta);
+    }
+
+    private async void AgregarLinea()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoProducto))
+        {
+            await MostrarToast("No se encontro el producto.");
+            return;
+        }
+        
+        if (nuevaLinea.Cantidad <= 0)
+        {
+            await MostrarToast("La cantidad debe ser mayor que cero.");
+            return;
+        }   
+
+        var producto = productosDisponibles.FirstOrDefault(p => p.Id.ToString() == nuevoProducto);
+
+        if (producto == null)
+        {
+            await MostrarToast("No se encontro el producto.");
+            return;
+        }
+
+        if (producto != null)
+        {
+            var lineaExistente = pedido.Lineas.FirstOrDefault(l => l.Codigo == producto.Id.ToString());
+            if (lineaExistente != null)
+            {
+                lineaExistente.Cantidad += nuevaLinea.Cantidad;
+            }
+            else
+            {
+                pedido.Lineas.Add(new DetalleDeOrdenRequest
+                    {
+                        Codigo = producto.Id.ToString(),
+                        Nombre = producto.Name,
+                        Cantidad = nuevaLinea.Cantidad,
+                        PrecioUnitario = producto.UnitSellingPrice,
+                        Descuento = (decimal)(producto.Discount ?? 0)
+                    });
+            }
+        }
+
+        nuevaLinea = new();
+        nuevoProducto = null;
+    }
+
+
+    private void EliminarLinea(DetalleDeOrdenRequest linea)
+    {
+        pedido.Lineas.Remove(linea);
+    }
+
+    private async Task GuardarPedido()
+    {
+        // Validaciones
+        if (string.IsNullOrWhiteSpace(pedido.Cliente))
+        {
+            await MostrarToast("Debe seleccionar un cliente.");
+            return;
+        }
+
+        if (pedido.Lineas == null || !pedido.Lineas.Any())
+        {
+            await MostrarToast("Debe agregar al menos un producto al pedido.");
+            return;
+        }
+
+        if (pedido.Lineas.Any(l => l.Cantidad <= 0))
+        {
+            await MostrarToast("Todas las líneas deben tener cantidad mayor que cero.");
+            return;
+        }
+
+        if (pedido.FechaEntrega < pedido.FechaPedido)
+        {
+            await MostrarToast("La fecha de entrega no puede ser anterior a la fecha del pedido.");
+            return;
+        }
+
+        try
+        {
+            var detalles = pedido.Lineas.Select(l => new OrderDetailRequest
+                {
+                    ProductId = int.Parse(l.Codigo),
+                    Quantity = l.Cantidad
+                }).ToList();
+
+            var nuevaOrden = new PostOrderRequest
+                {
+                    AppUserId = pedido.Cliente,
+                    DeliveryDate = pedido.FechaEntrega,
+                    Status = 1,
+                    Observations = pedido.Observaciones,
+                    OrderDetails = detalles
+                };
+
+            var response = await Http.PostAsJsonAsync("https://apiaxseniors-augphncxezfpa4a8.canadacentral-01.azurewebsites.net/v1/order/create", nuevaOrden);
+
+            if (response.IsSuccessStatusCode)
+            {
+                await MostrarToast("✅ Pedido guardado exitosamente.");
+                await LimpiarFormularioConNumeroNuevo();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                await MostrarToast($"❌ Error al guardar: {response.StatusCode} - {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await MostrarToast($"⚠️ Excepción al guardar pedido: {ex.Message}");
+        }
+    }
+
+
+    private void LimpiarFormulario()
+    {
+        pedido = new OrderRequest
+            {
+                NumeroPedido = pedido.NumeroPedido,
+                FechaPedido = DateTime.Today,
+                FechaEntrega = DateTime.Today.AddDays(7),
+                Estado = "Nuevo",
+                Lineas = new List<DetalleDeOrdenRequest>(),
+                Observaciones = string.Empty,
+                Cliente = string.Empty,
+                NombreCliente = string.Empty
+            };
+
+        nuevaLinea = new DetalleDeOrdenRequest();
+        nuevoProducto = null;
+    }
+
+    private async Task LimpiarFormularioConNumeroNuevo()
+    {
+        LimpiarFormulario();
+        await ObtenerNumeroPedido();
+    }
+
+
+    private void ActualizarNombreCliente(ChangeEventArgs e)
+    {
+        var codigoSeleccionado = e.Value?.ToString();
+        pedido.Cliente = codigoSeleccionado;
+
+        var clienteSeleccionado = clientes.FirstOrDefault(c => c.Id == codigoSeleccionado);
+        pedido.NombreCliente = ((clienteSeleccionado?.FirstName + " ") ?? "")  + clienteSeleccionado?.LastName ?? "";
+    }
+
+    private ElementReference toastRef;
+    private string toastMensaje = "";
+
+    private async Task MostrarToast(string mensaje)
+    {
+        toastMensaje = mensaje;
+        await JS.InvokeVoidAsync("toast.show", toastRef);
+    }
+
+    private async Task CerrarToast()
+    {
+        await JS.InvokeVoidAsync("toast.hide", toastRef);
+    }
+
+}
+

@@ -1,0 +1,311 @@
+﻿@page "/productos"
+@using AXSeniorsRetoFrontEnd.Models
+@using AXSeniorsRetoFrontEnd.Models.Request.Products
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Productos</PageTitle>
+
+<div class="container my-4">
+    <div class="card shadow-sm">
+
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Listado de Productos</h4>
+            <button class="btn btn-light text-primary" @onclick="MostrarModal">+ Nuevo Producto</button>
+        </div>
+
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Buscar producto:</label>
+                <div class="input-group">
+                    <InputText class="form-control"
+                    @bind-Value="busquedaGlobal"
+                    placeholder="Escriba su búsqueda..." />
+                    <button class="btn btn-primary rounded-end px-4" type="button" @onclick="AplicarFiltro">
+                        Buscar
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th @onclick="@(() => CambiarOrden("Name"))" style="cursor:pointer">
+                                @ObtenerIconoOrden("Name") Nombre
+                            </th>
+                            <th>Descripción</th>
+                            <th @onclick="@(() => CambiarOrden("UnitPrice"))" style="cursor:pointer"> @ObtenerIconoOrden("UnitPrice") Precio</th>
+                            <th @onclick="@(() => CambiarOrden("UnitSellingPrice"))" style="cursor:pointer"> @ObtenerIconoOrden("UnitSellingPrice") Precio</th>
+                            <th>Descuento</th>
+                            <th>Stock</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (ProductosFiltrados.Any())
+                        {
+                            @foreach (var p in ProductosFiltrados)
+                            {
+                                <tr>
+                                    <td>@p.Id</td>
+                                    <td>@p.Name</td>
+                                    <td>@p.Description</td>
+                                    <td>@(p.UnitPrice.ToString("C"))</td>
+                                    <td>@(p.UnitSellingPrice.ToString("C"))</td>
+                                    <td>@(p.Discount*100) %</td>
+                                    <td>@p.Stock</td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center">No hay resultados.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mt-3 gap-2">
+                <button class="btn btn-outline-primary" @onclick="PaginaAnterior" disabled="@(!PuedeRetroceder)">← Anterior</button>
+                <span>Página @paginaActual de @totalPaginas</span>
+                <button class="btn btn-outline-primary" @onclick="PaginaSiguiente" disabled="@(!PuedeAvanzar)">Siguiente →</button>
+            </div>
+        </div>
+    </div>
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div class="toast align-items-center text-white bg-danger border-0" role="alert" @ref="toastRef">
+            <div class="d-flex">
+                <div class="toast-body">@toastMensaje</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" @onclick="CerrarToast"></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="modalProducto" tabindex="-1" role="dialog" aria-labelledby="modalProductoLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nuevo Producto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <EditForm Model="nuevoProducto" OnValidSubmit="CrearProducto">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary />
+
+                    <div class="mb-3">
+                        <label class="form-label">Nombre</label>
+                        <InputText class="form-control" @bind-Value="nuevoProducto.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <InputText class="form-control" @bind-Value="nuevoProducto.Description" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Precio de Compra</label>
+                        <InputNumber class="form-control" @bind-Value="nuevoProducto.UnitPrice" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Precio de Venta</label>
+                        <InputNumber class="form-control" @bind-Value="nuevoProducto.UnitSellingPrice" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descuento (%)</label>
+                        <InputNumber class="form-control" @bind-Value="nuevoProducto.Discount" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Stock</label>
+                        <InputNumber class="form-control" @bind-Value="nuevoProducto.Stock" />
+                    </div>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@code {
+    private ElementReference toastRef;
+    private string toastMensaje = "";
+
+    private async Task MostrarToast(string mensaje)
+    {
+        toastMensaje = mensaje;
+        await JS.InvokeVoidAsync("toast.show", toastRef);
+    }
+
+    private async Task CerrarToast()
+    {
+        await JS.InvokeVoidAsync("toast.hide", toastRef);
+    }
+
+    private List<ProductDto> productos = new();
+    private int paginaActual = 1;
+    private int totalPaginas = 1;
+
+    private string busquedaGlobal = "";
+    private string columnaOrden = "Name";
+    private bool ordenAscendente = true;
+
+    private PostProductRequest nuevoProducto = new();
+
+
+    private async Task CrearProducto()
+    {
+        var errores = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(nuevoProducto.Name)){
+            await MostrarToast("El nombre es obligatorio.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(nuevoProducto.Description)){
+            await MostrarToast("La descripción es obligatoria.");
+            return;
+        }
+
+        if (nuevoProducto.UnitPrice <= 0){
+            await MostrarToast("El precio de compra debe ser mayor que 0.");
+            return;
+        }
+
+
+        if (nuevoProducto.UnitSellingPrice <= 0){
+            await MostrarToast("El precio de venta debe ser mayor que 0.");
+            return;
+        }
+
+
+        if (nuevoProducto.Discount is not null && (nuevoProducto.Discount < 0 || nuevoProducto.Discount > 100)){
+            await MostrarToast("El descuento debe estar entre 0 y 100.");
+            return;
+        }
+
+
+        if (nuevoProducto.Stock <= 0){
+            await MostrarToast("El stock debe ser mayor que 0.");
+            return;
+        }
+
+        nuevoProducto.Discount = nuevoProducto.Discount / 100;
+
+        // Si pasa validación, enviar
+        var response = await Http.PostAsJsonAsync("https://apiaxseniors-augphncxezfpa4a8.canadacentral-01.azurewebsites.net/v1/product/create", nuevoProducto);
+        if (response.IsSuccessStatusCode)
+        {
+            await CargarProductos();
+            nuevoProducto = new();
+            await JS.InvokeVoidAsync("productModal.hide");
+            await MostrarToast("✅ Producto creado correctamente.");
+        }
+        else
+        {
+            await MostrarToast($"❌ Falló la creación del producto. Status: {response.StatusCode}");
+        }
+    }
+
+
+    private async Task MostrarModal()
+    {
+        await JS.InvokeVoidAsync("productModal.show");
+    }
+
+    private void AplicarFiltro()
+    {
+        busquedaGlobal = busquedaGlobal;
+    }
+
+    private async Task CargarProductos()
+    {
+        try
+        {
+            var url = $"https://apiaxseniors-augphncxezfpa4a8.canadacentral-01.azurewebsites.net/v1/product/get-products-paginated?perPage=3&pageNumber={paginaActual}";
+            var resultado = await Http.GetFromJsonAsync<PaginatedProductResponse>(url);
+            if (resultado != null)
+            {
+                productos = resultado.Records ?? new();
+                totalPaginas = resultado.PagingInfo.TotalPages;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar productos paginados: {ex.Message}");
+        }
+    }
+
+    private bool PuedeAvanzar => paginaActual < totalPaginas;
+    private bool PuedeRetroceder => paginaActual > 1;
+
+    private async Task PaginaSiguiente()
+    {
+        if (PuedeAvanzar)
+        {
+            paginaActual++;
+            await CargarProductos();
+        }
+    }
+
+    private async Task PaginaAnterior()
+    {
+        if (PuedeRetroceder)
+        {
+            paginaActual--;
+            await CargarProductos();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarProductos();
+    }
+
+    private IEnumerable<ProductDto> ProductosFiltrados =>
+        productos
+            .Where(p =>
+                string.IsNullOrWhiteSpace(busquedaGlobal) ||
+                (p.Name?.Contains(busquedaGlobal, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (p.Description?.Contains(busquedaGlobal, StringComparison.OrdinalIgnoreCase) ?? false)
+            ).OrderBy<ProductDto, string?>(el => (!ordenAscendente && columnaOrden.Equals("Name")) ? null : el.Name)
+             .OrderByDescending<ProductDto, string?>(el => (ordenAscendente && columnaOrden.Equals("Name")) ? null : el.Name)
+             .OrderBy<ProductDto, decimal?>(el => ((!ordenAscendente && !columnaOrden.Equals("Name")) ? null : (columnaOrden.Equals("UnitSellingPrice") ? el.UnitSellingPrice : el.UnitPrice)))
+             .OrderByDescending<ProductDto, decimal?>(el => (ordenAscendente && !columnaOrden.Equals("Name")) ? null : columnaOrden.Equals("UnitSellingPrice") ? el.UnitSellingPrice : el.UnitPrice)
+             ;
+
+
+    private Func<ProductDto, object> ObtenerOrdenSelector()
+    {
+        return columnaOrden switch
+        {
+            "Name" => p => p.Name,
+            "UnitSellingPrice" => p => p.UnitSellingPrice,
+            "UnitPrice" => p => p.UnitPrice,
+            _ => p => p.UnitSellingPrice
+        };
+    }
+
+    private void CambiarOrden(string columna)
+    {
+        if (columnaOrden == columna)
+            ordenAscendente = !ordenAscendente;
+        else
+        {
+            columnaOrden = columna;
+            ordenAscendente = true;
+        }
+    }
+
+    private MarkupString ObtenerIconoOrden(string columna)
+    {
+        if (columnaOrden != columna)
+            return (MarkupString)"<span class='me-1 text-muted'>&#8693;</span>"; // Neutral icon
+
+        var icono = ordenAscendente ? "&#9650;" : "&#9660;"; // ▲ or ▼
+        return (MarkupString)$"<span class='me-1'>{icono}</span>";
+    }
+}

@@ -1,0 +1,323 @@
+﻿@page "/clientes"
+@using AXSeniorsRetoFrontEnd.Models
+@using AXSeniorsRetoFrontEnd.Models.Request.Clients
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Clientes</PageTitle>
+
+<div class="container my-4">
+    <div class="card shadow-sm">
+
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Listado de Clientes</h4>
+            <button class="btn btn-light text-primary" @onclick="MostrarModal">+ Nuevo Cliente</button>
+        </div>
+
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Buscar cliente:</label>
+                <div class="input-group">
+                    <InputText class="form-control"
+                               @bind-Value="busquedaGlobal"
+                               placeholder="Escriba su búsqueda..." />
+                    <button class="btn btn-primary rounded-end px-4" type="button" @onclick="AplicarFiltro">
+                        Buscar
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th @onclick="@(() => CambiarOrden("FirstName"))" style="cursor:pointer">
+                                @ObtenerIconoOrden("FirstName") Nombre
+                            </th>
+                            <th @onclick="@(() => CambiarOrden("LastName"))" style="cursor:pointer">
+                                @ObtenerIconoOrden("LastName") Apellido
+                            </th>
+                            <th @onclick="@(() => CambiarOrden("Email"))" style="cursor:pointer">
+                                @ObtenerIconoOrden("Email") Correo
+                            </th>
+                            <th @onclick="@(() => CambiarOrden("NewOrders"))" style="cursor:pointer">
+                                @ObtenerIconoOrden("NewOrders") NewOrders
+                            </th>
+                            <th @onclick="@(() => CambiarOrden("TotalAmount"))" style="cursor:pointer">
+                                @ObtenerIconoOrden("TotalAmount") TotalAmount
+                            </th>
+                            <th>Activo</th>
+                            <th @onclick="@(() => CambiarOrden("Registered"))" style="cursor:pointer">
+                                @ObtenerIconoOrden("Registered") Fecha Registro
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (ClientesFiltrados.Any())
+                        {
+                            @foreach (var c in ClientesFiltrados)
+                            {
+                                <tr>
+                                    <td>@c.Id</td>
+                                    <td>@c.FirstName</td>
+                                    <td>@c.LastName</td>
+                                    <td>@c.Email</td>
+                                    <td>@c.NewOrders</td>
+                                    <td>@c.TotalAmount</td>
+                                    <td>@(c.IsActive ? "Sí" : "No")</td>
+                                    <td>@c.Registered.ToString("dd/MM/yyyy")</td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center">No hay resultados.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mt-3 gap-2">
+                <button class="btn btn-outline-primary" @onclick="PaginaAnterior" disabled="@(!PuedeRetroceder)">← Anterior</button>
+                <span>Página @paginaActual de @totalPaginas</span>
+                <button class="btn btn-outline-primary" @onclick="PaginaSiguiente" disabled="@(!PuedeAvanzar)">Siguiente →</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal fade" id="modalCliente" tabindex="-1" role="dialog" aria-labelledby="modalClienteLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Nuevo Cliente</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="nuevoCliente" OnValidSubmit="CrearCliente">
+
+                        <div class="mb-3">
+                            <label class="form-label">Nombre</label>
+                            <InputText class="form-control" @bind-Value="nuevoCliente.FirstName" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Apellido</label>
+                            <InputText class="form-control" @bind-Value="nuevoCliente.LastName" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Correo</label>
+                            <InputText class="form-control" @bind-Value="nuevoCliente.Email" />
+                        </div>
+                        <button type="submit" class="btn btn-primary">Guardar</button>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div class="toast align-items-center text-white bg-danger border-0" role="alert" @ref="toastRef">
+            <div class="d-flex">
+                <div class="toast-body">@toastMensaje</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" @onclick="CerrarToast"></button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+@code {
+
+    private ElementReference toastRef;
+    private string toastMensaje = "";
+
+    private async Task MostrarToast(string mensaje)
+    {
+        toastMensaje = mensaje;
+        await JS.InvokeVoidAsync("toast.show", toastRef);
+    }
+
+    private async Task CerrarToast()
+    {
+        await JS.InvokeVoidAsync("toast.hide", toastRef);
+    }
+
+    private List<ClientPaginatedDto> clientes = new();
+    private int paginaActual = 1;
+    private int totalPaginas = 1;
+
+    private PostClientRequest nuevoCliente = new();
+
+    private void AplicarFiltro()
+    {
+        busquedaGlobal = busquedaGlobal;
+    }
+
+    private async Task CrearCliente()
+    {
+        var errores = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(nuevoCliente.FirstName))
+        {
+            await MostrarToast("El nombre es obligatorio.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(nuevoCliente.LastName))
+        {
+            await MostrarToast("El apellido es obligatorio.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(nuevoCliente.Email))
+        {
+            await MostrarToast("El correo es obligatorio.");
+            return;
+        }
+        else if (!System.Text.RegularExpressions.Regex.IsMatch(nuevoCliente.Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+        {
+            await MostrarToast("El correo no es válido.");
+            return;
+        }
+
+        nuevoCliente.Password = nuevoCliente.Email;
+
+        var response = await Http.PostAsJsonAsync("https://apiaxseniors-augphncxezfpa4a8.canadacentral-01.azurewebsites.net/v1/account/clients", nuevoCliente);
+        if (response.IsSuccessStatusCode)
+        {
+            await MostrarToast("✅ Cliente creado exitosamente.");
+            nuevoCliente = new();
+            await JS.InvokeVoidAsync("clienteModal.hide");
+            await CargarClientes(); // si tienes un método para recargar la tabla
+        }
+        else
+        {
+            await MostrarToast($"❌ Falló la creación del cliente. Status: {response.StatusCode}");
+        }
+    }
+
+
+
+    private async Task CargarClientes()
+    {
+        try
+        {
+            var url = $"https://apiaxseniors-augphncxezfpa4a8.canadacentral-01.azurewebsites.net/v1/account/get-users-paginated?perPage=3&pageNumber={paginaActual}";
+            var resultado = await Http.GetFromJsonAsync<PaginatedClientResponse>(url);
+            if (resultado != null)
+            {
+                clientes = resultado.Records ?? new();
+                totalPaginas = resultado.PagingInfo.TotalPages;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error al cargar clientes paginados: {ex.Message}");
+        }
+    }
+
+    private bool PuedeAvanzar => paginaActual < totalPaginas;
+    private bool PuedeRetroceder => paginaActual > 1;
+
+    private async Task PaginaSiguiente()
+    {
+        if (PuedeAvanzar)
+        {
+            paginaActual++;
+            await CargarClientes();
+        }
+    }
+
+    private async Task PaginaAnterior()
+    {
+        if (PuedeRetroceder)
+        {
+            paginaActual--;
+            await CargarClientes();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarClientes();
+    }
+
+    private string filtroId = "";
+    private string filtroNombre = "";
+    private string filtroApellido = "";
+    private string filtroCorreo = "";
+
+    private string columnaOrden = "FirstName";
+    private bool ordenAscendente = true;
+
+    private Func<ClientPaginatedDto, object> ObtenerOrdenSelector()
+    {
+        return columnaOrden switch
+        {
+            "FirstName" => c => c.FirstName,
+            "LastName" => c => c.LastName,
+            "Email" => c => c.Email,
+            "Registered" => c => c.Registered,
+            "NewOrders" => c => c.NewOrders,
+            "TotalAmount" => c => c.TotalAmount,
+            _ => c => c.FirstName
+        };
+    }
+
+
+    private string busquedaGlobal = "";
+
+    private IEnumerable<ClientPaginatedDto> ClientesFiltrados =>
+    clientes
+        .Where(c =>
+            string.IsNullOrWhiteSpace(busquedaGlobal) ||
+            (c.Id?.Contains(busquedaGlobal, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (c.FirstName?.Contains(busquedaGlobal, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (c.LastName?.Contains(busquedaGlobal, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (c.Email?.Contains(busquedaGlobal, StringComparison.OrdinalIgnoreCase) ?? false)
+        )
+     .OrderBy<ClientPaginatedDto, string?>(el => (!ordenAscendente && !columnaOrden.Equals("NewOrders") && !columnaOrden.Equals("TotalAmount")) ? null : ((columnaOrden.Equals("FirstName")) ? el.FirstName : ((columnaOrden.Equals("LastName")) ? el.LastName :
+      ((columnaOrden.Equals("Email")) ? el.Email : el.Registered.Ticks.ToString()))))
+      .OrderByDescending<ClientPaginatedDto, string?>(el => (ordenAscendente && !columnaOrden.Equals("NewOrders") && !columnaOrden.Equals("TotalAmount")) ? null : ((columnaOrden.Equals("FirstName")) ? el.FirstName : ((columnaOrden.Equals("LastName")) ? el.LastName :
+      ((columnaOrden.Equals("Email")) ? el.Email : el.Registered.Ticks.ToString()))))
+      .OrderBy<ClientPaginatedDto, double?>(el => (!ordenAscendente && (columnaOrden.Equals("NewOrders") || columnaOrden.Equals("TotalAmount"))) ? null : ((columnaOrden.Equals("NewOrders")) ? el.NewOrders : el.TotalAmount))
+      .OrderByDescending<ClientPaginatedDto, double?>(el => (ordenAscendente && (columnaOrden.Equals("NewOrders") || columnaOrden.Equals("TotalAmount"))) ? null : ((columnaOrden.Equals("NewOrders")) ? el.NewOrders : el.TotalAmount))
+      ;
+
+
+    private MarkupString ObtenerIconoOrden(string columna)
+    {
+        if (columnaOrden != columna)
+            return (MarkupString)"<span class='me-1 text-muted'>&#8693;</span>"; // ícono neutral ⬍
+
+        var icono = ordenAscendente ? "&#9650;" : "&#9660;"; // ▲ o ▼
+        return (MarkupString)$"<span class='me-1'>{icono}</span>";
+    }
+
+    private void CambiarOrden(string columna)
+    {
+        ObtenerIconoOrden(columna);
+
+        Console.WriteLine("Cambiando la mierda");
+        if (columnaOrden == columna)
+        {
+            Console.WriteLine("Entro aqui" + columna);
+            ordenAscendente = !ordenAscendente;
+        }
+        else
+        {
+            Console.WriteLine("Entro aqui 2" + columna);
+            columnaOrden = columna.Trim();
+            ordenAscendente = true;
+        }
+    }
+
+    private async Task MostrarModal()
+    {
+        await JS.InvokeVoidAsync("clienteModal.show");
+    }
+
+}
